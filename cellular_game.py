@@ -20,24 +20,32 @@ class Environment:
 
     class Matrix:
         def __init__(self):
-            self.mat = np.zeros(shape=(SIZE, SIZE)).tolist()
-
+            self.mat = [[] for _ in range(SIZE)]
+            for i in range(SIZE):
+                self.mat[i] = [list() for _ in range(SIZE)]
+        
         def _clear(self):
             self.__init__()
-
-        def update(self):
-            for row in range(SIZE):
-                for col in range(SIZE):
-                    self.mat[row,col]
-            self._clear()
 
     def __init__(self):
         self.grid = self.create_grid()
 
-        self.env = self.Matrix()
+        self.matrix = self.matrix_init()
 
         self.herds = []
         self.step = count(0, 1)
+    
+    @staticmethod
+    def matrix_init():
+        mat = [[] for _ in range(SIZE)]
+        for i in range(SIZE):
+            mat[i] = [list() for _ in range(SIZE)]
+        return mat
+
+    def update_matrix(self):
+        self.matrix_init()
+        for herd in self.herds:
+            herd.add_grid_pos(self.matrix)
 
     @staticmethod
     def create_grid():
@@ -55,6 +63,7 @@ class Environment:
             h.walk()
             if b: h.blit(self.grid)
 
+        self.update_matrix()
         self.game_check()
 
         self.grid.update()
@@ -64,7 +73,16 @@ class Environment:
         self.herds.append(herd)
 
     def game_check(self):
-        pass
+        for r in range(SIZE):
+            for c in range(SIZE):
+                temp = self.matrix[r][c]
+                if len(temp)<2:
+                    continue
+                else:
+                    max_p = max([crea.priority for crea in temp])
+                    for crea in temp:
+                        if crea.priority < max_p:
+                            crea.die()
 
 
 class Creature:
@@ -72,7 +90,7 @@ class Creature:
     Parent class to all creatures.
     """
 
-    def __init__(self, color, size=1, speed=1, pos=None):
+    def __init__(self, color, priority, herd, size=1, speed=1, pos=None):
         # General attributes
         if pos is None:
             pos = [10, 10]
@@ -80,6 +98,12 @@ class Creature:
         self.color = color
         self.size = size
         self.speed = speed
+        self.priority = priority
+        self.herd = herd 
+    
+    def die(self):
+        if self in self.herd:
+            self.herd.remove(self)
 
     def walk(self):
         rng = self.rng()
@@ -104,26 +128,16 @@ class Creature:
         return int(random.random() * 4)
 
 
-class Plant(Creature):
-    """
-    Pathetic.
-    """
-
-    def __init__(self, pos):
-        speed = 0
-        color = "light green"
-        super().__init__(color, speed=speed, pos=pos)
-
-
 class Herbivore(Creature):
     """
     Weaklings.
     """
 
-    def __init__(self, pos):
+    def __init__(self, pos, herd):
         speed = 1
         color = "grey"
-        super().__init__(color, speed=speed, pos=pos)
+        priority = 0
+        super().__init__(color, priority=priority, herd=herd, speed=speed, pos=pos)
 
         self.priority = 1
 
@@ -133,11 +147,12 @@ class LowPredator(Creature):
     Eats Herbivores.
     """
 
-    def __init__(self, pos):
+    def __init__(self, pos, herd):
         speed = 1
         size = 2
         color = "black"
-        super().__init__(color, speed=speed, pos=pos, size=size)
+        priority = 1
+        super().__init__(color, priority=priority, herd=herd, speed=speed, pos=pos, size=size)
 
         self.priority = 2
 
@@ -147,17 +162,16 @@ class Herd:
     List of creatures.
     """
 
-    def __init__(self, ctype, num, matrix, env_size=SIZE):
+    def __init__(self, ctype, num, env_size=SIZE):
         self.lst = [None] * num
-        self.matrix = matrix
         for i in range(num):
-            self.lst[i] = ctype(pos=self.random_pos_dist(env_size))
+            self.lst[i] = ctype(pos=self.random_pos_dist(env_size), herd=self.lst)
 
-    def update_grid_pos(self):
+    def add_grid_pos(self, matrix):
         for creature in self.lst:
             for r in range(SIZE):
                 for c in range(SIZE):
-                    self.matrix[r,c].append(creature)
+                    matrix[r][c].append(creature)
 
     def blit(self, grid):
         for e in self.lst:
