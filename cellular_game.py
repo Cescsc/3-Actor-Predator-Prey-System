@@ -10,7 +10,7 @@ from itertools import count
 from Grid import Grid
 
 FPS = 10
-SIZE = 50
+SIZE = 20
 
 
 class Environment:
@@ -23,7 +23,7 @@ class Environment:
             self.mat = [[] for _ in range(SIZE)]
             for i in range(SIZE):
                 self.mat[i] = [list() for _ in range(SIZE)]
-        
+
         def _clear(self):
             self.__init__()
 
@@ -34,7 +34,7 @@ class Environment:
 
         self.herds = []
         self.step = count(0, 1)
-    
+
     @staticmethod
     def matrix_init():
         mat = [[] for _ in range(SIZE)]
@@ -43,7 +43,7 @@ class Environment:
         return mat
 
     def update_matrix(self):
-        self.matrix_init()
+        self.matrix = self.matrix_init()
         for herd in self.herds:
             herd.add_grid_pos(self.matrix)
 
@@ -56,12 +56,17 @@ class Environment:
         return grid
 
     def update(self, skip):
-        b = next(self.step) % skip == 0
+        if skip == 0:
+            b = 1
+        else:
+            b = (next(self.step) % skip == 0)
 
-        if b: self.grid.clear()
+        if b:
+            self.grid.clear()
         for h in self.herds:
-            h.walk()
-            if b: h.blit(self.grid)
+            h.update()
+            if b:
+                h.blit(self.grid)
 
         self.update_matrix()
         self.game_check()
@@ -76,21 +81,40 @@ class Environment:
         for r in range(SIZE):
             for c in range(SIZE):
                 temp = self.matrix[r][c]
-                if len(temp)<2:
+                if len(temp) < 2:
                     continue
                 else:
                     max_p = max([crea.priority for crea in temp])
+                    predators = []
+                    nutri_gain = []
                     for crea in temp:
-                        if crea.priority < max_p:
+                        if crea.priority == max_p:
+                            predators.append(crea)
+                        else:
+                            nutri_gain.append(crea.nutri)
                             crea.die()
+                    nutri_split = sum(nutri_gain)//len(predators)
+                    for pred in predators:
+                        pred.hunger += nutri_split
 
 
 class Creature:
     """
     Parent class to all creatures.
     """
+    DEPLETION = 2
 
-    def __init__(self, color, priority, herd, size=1, speed=1, pos=None):
+    def __init__(
+            self,
+            color,
+            priority,
+            herd,
+            regen,
+            nutri,
+            size=1,
+            speed=1,
+            pos=None
+    ):
         # General attributes
         if pos is None:
             pos = [10, 10]
@@ -99,11 +123,19 @@ class Creature:
         self.size = size
         self.speed = speed
         self.priority = priority
-        self.herd = herd 
-    
+        self.herd = herd
+        self.hunger = 100  # Current hunger value
+        self.regen = regen  # Passive hunger regeneration
+        self.nutri = nutri  # Hunger points given when eaten
+
     def die(self):
         if self in self.herd:
             self.herd.remove(self)
+
+    def life_update(self):
+        self.hunger += self.regen - self.DEPLETION
+        if self.hunger <= 0:
+            self.die()
 
     def walk(self):
         rng = self.rng()
@@ -137,9 +169,17 @@ class Herbivore(Creature):
         speed = 1
         color = "grey"
         priority = 0
-        super().__init__(color, priority=priority, herd=herd, speed=speed, pos=pos)
-
-        self.priority = 1
+        regen = 1
+        nutri = 50
+        super().__init__(
+            color,
+            priority=priority,
+            herd=herd,
+            regen=regen,
+            nutri=nutri,
+            speed=speed,
+            pos=pos
+        )
 
 
 class LowPredator(Creature):
@@ -152,9 +192,18 @@ class LowPredator(Creature):
         size = 2
         color = "black"
         priority = 1
-        super().__init__(color, priority=priority, herd=herd, speed=speed, pos=pos, size=size)
-
-        self.priority = 2
+        regen = 0
+        nutri = 100
+        super().__init__(
+            color,
+            priority=priority,
+            herd=herd,
+            regen=regen,
+            nutri=nutri,
+            speed=speed,
+            pos=pos,
+            size=size
+        )
 
 
 class Herd:
@@ -169,17 +218,16 @@ class Herd:
 
     def add_grid_pos(self, matrix):
         for creature in self.lst:
-            for r in range(SIZE):
-                for c in range(SIZE):
-                    matrix[r][c].append(creature)
+            matrix[creature.pos[0]][creature.pos[1]].append(creature)
 
     def blit(self, grid):
         for e in self.lst:
             e.blit(grid)
 
-    def walk(self):
+    def update(self):
         for e in self.lst:
             e.walk()
+            e.life_update()
 
     @staticmethod
     def random_pos_dist(env_size):
@@ -191,13 +239,13 @@ class Herd:
 def main():
     env = Environment()
     herd = Herd(Herbivore, 20)
-    pred = Herd(LowPredator, 10)
+    pred = Herd(LowPredator, 20)
     env.add_herd(herd)
     env.add_herd(pred)
 
     loop = True
     while loop:
-        env.update(1)
+        env.update(2)
     env.grid.quit()
 
 
